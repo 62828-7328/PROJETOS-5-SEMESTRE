@@ -13,74 +13,49 @@ serve(async (req) => {
   try {
     const { userQuery } = await req.json()
 
-    if (!userQuery || userQuery.trim() === "") {
-      return new Response(
-        JSON.stringify({ error: "A descrição não pode estar vazia" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      )
+    if (!userQuery) {
+      return new Response(JSON.stringify({ error: "userQuery é obrigatório" }), { 
+        status: 400,
+        headers: { "Content-Type": "application/json" } 
+      })
     }
 
-    // Gerar embedding da query do usuário
+    // Gerar embedding
     const embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" })
     const embeddingResult = await embeddingModel.embedContent(userQuery)
     const queryEmbedding = embeddingResult.embedding.values
 
-    // Buscar perfumes mais parecidos
-    const { data: perfumes, error } = await supabase
+    // Busca vetorial
+    const { data: perfumes } = await supabase
       .from('perfumes')
-      .select('id, nome, marca, notas_principais, accords, familia_olfativa, genero, preco_aprox_br, onde_comprar')
+      .select('nome, marca, notas_principais, familia_olfativa, preco_aprox_br, onde_comprar')
       .rpc('match_perfumes', {
         query_embedding: queryEmbedding,
-        match_threshold: 0.75,
-        match_count: 8
+        match_threshold: 0.7,
+        match_count: 6
       })
-
-    if (error) throw error
 
     if (!perfumes || perfumes.length === 0) {
       return new Response(
         JSON.stringify({ 
-          recomendacao: "Não encontrei perfumes que combinam bem com sua descrição no momento. Tente descrever melhor (ex: perfume fresco para calor, doce gourmand, amadeirado masculino, árabe barato...)." 
+          recomendacao: "Ainda não tenho perfumes cadastrados no banco. Assim que eu importar o dataset, vou poder te recomendar perfumes reais!" 
         }),
         { headers: { "Content-Type": "application/json" } }
       )
     }
 
-    // Gerar recomendação final com Gemini
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
-
-    const prompt = `
-Você é um especialista em perfumes brasileiro, descontraído e sincero.
-
-Usuário pediu: "${userQuery}"
-
-Perfumes encontrados mais parecidos:
-
-${perfumes.map((p: any, i: number) => 
-  `${i+1}. ${p.nome} (${p.marca}) — ${p.notas_principais || ''} — ${p.familia_olfativa || ''} — Preço aprox: ${p.preco_aprox_br || '—'}`
-).join('\n')}
-
-Recomende de 2 a 4 perfumes dessa lista.
-Explique de forma natural por que cada um combina.
-Fale em português brasileiro, tom amigável.
-Não invente nada que não esteja na lista.
-`
-
-    const result = await model.generateContent(prompt)
-    const responseText = result.response.text()
-
     return new Response(
       JSON.stringify({ 
-        recomendacao: responseText,
-        encontrados: perfumes.length
+        recomendacao: "Encontrei alguns perfumes parecidos, mas ainda não tenho dados suficientes para dar uma recomendação completa.",
+        perfumes_encontrados: perfumes.length 
       }),
       { headers: { "Content-Type": "application/json" } }
     )
 
-  } catch (error: any) {
+  } catch (error) {
     console.error(error)
     return new Response(
-      JSON.stringify({ error: "Erro ao processar a recomendação. Tente novamente." }),
+      JSON.stringify({ error: "Erro interno na função" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     )
   }
