@@ -1,100 +1,93 @@
 import { createClient } from '@supabase/supabase-js'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import fs from 'fs'
 import csv from 'csv-parser'
 import dotenv from 'dotenv'
+import { pipeline } from '@xenova/transformers'
 
 dotenv.config()
 
-const supabaseUrl = process.env.SUPABASE_URL
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-const geminiApiKey = process.env.GEMINI_API_KEY
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 
-if (!supabaseUrl || !supabaseServiceKey || !geminiApiKey) {
-  console.error("❌ Erro: Verifique se o arquivo .env está correto com as chaves")
-  process.exit(1)
+let embedder = null
+
+async function getEmbedding(text) {
+    if (!embedder) {
+        console.log("⏳ Carregando modelo de embedding (só na primeira vez)...")
+        embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2')
+        console.log("✅ Modelo carregado!")
+    }
+
+    const output = await embedder(text, { pooling: 'mean', normalize: true })
+    return Array.from(output.data)
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
-const genAI = new GoogleGenerativeAI(geminiApiKey)
-
 async function importarPerfumes() {
-  console.log('🚀 Iniciando importação do fra_cleaned.csv...')
+    const { count, error: countError } = await supabase
+        .from('perfumes')
+        .select('*', { count: 'exact', head: true })
 
-  const perfumes = []
+    if (countError) {
+        console.error("❌ Erro ao conectar com Supabase:", countError.message)
+        return
+    }
 
-  fs.createReadStream('fra_cleaned.csv')
-    .pipe(csv())
-    .on('data', (row) => {
-      const content = [
-        row.name,
-        row.brand,
-        row.notes,
-        row.accords,
-        row.description || ''
-      ].filter(Boolean).join(' ').trim()
+    let skip = count || 0
+    console.log(`📊 Banco atual: ${skip} perfumes. Retomando a partir do próximo...`)
 
-      if (content.length > 20) {
-        perfumes.push({
-          nome: row.name || 'Sem nome',
-          marca: row.brand || 'Desconhecida',
-          notas_principais: row.notes || null,
-          accords: row.accords || null,
-          familia_olfativa: row.main_accords || null,
-          genero: row.gender || 'unissex',
-          content: content,
-          preco_aprox_br: null,
-          onde_comprar: null,
-          popular_no_brasil: false
+    const perfumes = []
+    fs.createReadStream('fra_cleaned.csv')
+        .pipe(csv({ separator: ';' }))
+        .on('data', (row) => {
+            const cleaned = {}
+            for (const key of Object.keys(row)) {
+                cleaned[key.trim()] = typeof row[key] === 'string' ? row[key].trim() : row[key]
+            }
+            perfumes.push(cleaned)
         })
-      }
-    })
-    .on('end', async () => {
-      console.log(`✅ CSV lido com ${perfumes.length} perfumes.`)
+        .on('end', async () => {
+            console.log(`📦 CSV carregado: ${perfumes.length} perfumes totais.`)
 
-      // Importar apenas os primeiros 400 para teste (para não demorar muito)
-      const lote = perfumes.slice(0, 400)
+            for (let i = skip; i < perfumes.length; i++) {
+                const p = perfumes[i]
 
-      console.log(`Importando ${lote.length} perfumes...`)
+                const content = [
+                    `Perfume: ${p.Perfume || ''}`,
+                    `Marca: ${p.Brand || ''}`,
+                    `País: ${p.Country || ''}`,
+                    `Gênero: ${p.Gender || ''}`,
+                    `Notas de topo: ${p.Top || ''}`,
+                    `Notas de coração: ${p.Middle || ''}`,
+                    `Notas de base: ${p.Base || ''}`,
+                    `Acordes: ${[p.mainaccord1, p.mainaccord2, p.mainaccord3].filter(Boolean).join(', ')}`,
+                ].join(' | ')
 
-      for (let i = 0; i < lote.length; i++) {
-        const p = lote[i]
+                try {
+                    const embedding = await getEmbedding(content)
 
-        try {
-          const model = genAI.getGenerativeModel({ model: "embedding-001" })
-          const result = await model.embedContent(p.content)
-          const embedding = result.embedding.values
+                    const { error } = await supabase.from('perfumes').insert({
+                        nome: p.Perfume,
+                        marca: p.Brand,
+                        notas: `${p.Top || ''} | ${p.Middle || ''} | ${p.Base || ''}`,
+                        accords: [p.mainaccord1, p.mainaccord2, p.mainaccord3, p.mainaccord4, p.mainaccord5]
+                            .filter(Boolean)
+                            .join(', '),
+                        genero: p.Gender,
+                        embedding: embedding
+                    })
 
-          const { error } = await supabase
-            .from('perfumes')
-            .insert({
-              nome: p.nome,
-              marca: p.marca,
-              notas_principais: p.notas_principais,
-              accords: p.accords,
-              familia_olfativa: p.familia_olfativa,
-              genero: p.genero,
-              content: p.content,
-              embedding: embedding
-            })
+                    if (error) {
+                        console.error(`❌ Erro no Supabase no índice ${i} (${p.Perfume}): ${error.message}`)
+                    } else {
+                        if (i % 50 === 0) console.log(`✅ [${i}/${perfumes.length}] OK: ${p.Perfume}`)
+                    }
 
-          if (error) {
-            console.error(`❌ Erro ${i+1}: ${p.nome} - ${error.message}`)
-          } else {
-            console.log(`✅ ${i+1}/${lote.length} - ${p.nome} (${p.marca})`)
-          }
-
-          // Pequeno delay para não exceder limite do Gemini
-          await new Promise(r => setTimeout(r, 300))
-
-        } catch (err) {
-          console.error(`Falha no perfume ${p.nome}:`, err.message)
-        }
-      }
-
-      console.log('\n🎉 Importação concluída!')
-      console.log('Agora você pode testar sua Edge Function.')
-    })
+                } catch (err) {
+                    console.error(`💥 Falha no índice ${i} (${p.Perfume}):`, err.message)
+                    await new Promise(r => setTimeout(r, 1000))
+                }
+            }
+            console.log("\n🏁 Importação Finalizada!")
+        })
 }
 
 importarPerfumes()
