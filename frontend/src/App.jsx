@@ -69,9 +69,7 @@ function ModalLogin({ onAnonimo }) {
   async function handleGoogle() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: {
-        redirectTo: window.location.origin,
-      },
+      options: { redirectTo: window.location.origin },
     });
   }
 
@@ -129,26 +127,65 @@ export default function App() {
   const [sidebarAberta, setSidebarAberta] = useState(false);
 
   useEffect(() => {
-    // Verifica se já tem sessão ativa
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
-        if (pendingBusca) {
-          setPendingBusca(false);
-          buscar();
-        }
+        carregarHistorico(session.user.id);
       }
     });
 
-    // Escuta mudanças de autenticação
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u) carregarHistorico(u.id);
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  async function carregarHistorico(userId) {
+    const { data } = await supabase
+      .from("historico")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (data) {
+      setHistorico(
+        data.map((h) => ({
+          id: h.id,
+          query: h.query,
+          resultado: { recomendacao: h.recomendacao, dados: h.dados },
+        })),
+      );
+    }
+  }
+
+  async function salvarHistorico(userId, queryCompleta, data) {
+    await supabase.from("historico").insert({
+      user_id: userId,
+      query: queryCompleta,
+      recomendacao: data.recomendacao,
+      dados: data.dados,
+    });
+  }
+
+  async function apagarHistorico(index) {
+    const item = historico[index];
+    if (user && item.id) {
+      await supabase.from("historico").delete().eq("id", item.id);
+    }
+    setHistorico((prev) => prev.filter((_, i) => i !== index));
+    if (historicoAtivo === index) {
+      setHistoricoAtivo(null);
+      setResultado(null);
+    } else if (historicoAtivo > index) {
+      setHistoricoAtivo((prev) => prev - 1);
+    }
+  }
 
   function handleBuscarClick() {
     if (!query.trim()) return;
@@ -201,11 +238,10 @@ export default function App() {
       }
 
       setResultado(data);
+
       if (user) {
-        setHistorico((prev) => [
-          { query: queryCompleta, resultado: data },
-          ...prev.slice(0, 4),
-        ]);
+        await salvarHistorico(user.id, queryCompleta, data);
+        await carregarHistorico(user.id);
       }
     } catch {
       setErro("Erro ao buscar perfumes. Tente novamente.");
@@ -249,16 +285,20 @@ export default function App() {
           <div className="sidebar-nome">{nomeExibido}</div>
           <nav className="sidebar-nav">
             {historico.map((item, i) => (
-              <button
-                key={i}
-                className={`hist-btn ${historicoAtivo === i ? "ativo" : ""}`}
-                onClick={() => {
-                  setHistoricoAtivo(historicoAtivo === i ? null : i);
-                  setResultado(null);
-                }}
-              >
-                histórico {i + 1}
-              </button>
+              <div key={i} className="hist-item">
+                <button
+                  className={`hist-btn ${historicoAtivo === i ? "ativo" : ""}`}
+                  onClick={() => {
+                    setHistoricoAtivo(historicoAtivo === i ? null : i);
+                    setResultado(null);
+                  }}
+                >
+                  histórico {i + 1}
+                </button>
+                <button className="hist-del" onClick={() => apagarHistorico(i)}>
+                  ✕
+                </button>
+              </div>
             ))}
           </nav>
           <button className="sair-btn" onClick={handleSair}>
@@ -290,6 +330,14 @@ export default function App() {
         <div className="conteudo">
           {dadosExibidos ? (
             <div className="resultado-area">
+              <div className="query-exibida">
+                <span className="query-label">Sua busca</span>
+                <p>
+                  {historicoAtivo !== null
+                    ? historico[historicoAtivo]?.query
+                    : query}
+                </p>
+              </div>
               {dadosExibidos.recomendacao && (
                 <div className="resposta-ia">
                   <span className="resposta-label">Resposta da IA</span>
