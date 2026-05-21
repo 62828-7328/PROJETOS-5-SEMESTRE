@@ -158,16 +158,18 @@ export default function App() {
         data.map((h) => ({
           id: h.id,
           query: h.query,
+          queryCompleta: h.query_completa || h.query,
           resultado: { recomendacao: h.recomendacao, dados: h.dados },
         })),
       );
     }
   }
 
-  async function salvarHistorico(userId, queryCompleta, data) {
+  async function salvarHistorico(userId, queryOriginal, queryCompleta, data) {
     await supabase.from("historico").insert({
       user_id: userId,
-      query: queryCompleta,
+      query: queryOriginal,
+      query_completa: queryCompleta,
       recomendacao: data.recomendacao,
       dados: data.dados,
     });
@@ -213,6 +215,7 @@ export default function App() {
     setResultado(null);
     setHistoricoAtivo(null);
 
+    const queryOriginal = query;
     const queryCompleta = [
       genero && `Gênero: ${genero}.`,
       categoria && `Categoria: ${categoria}.`,
@@ -240,7 +243,7 @@ export default function App() {
       setResultado(data);
 
       if (user) {
-        await salvarHistorico(user.id, queryCompleta, data);
+        await salvarHistorico(user.id, queryOriginal, queryCompleta, data);
         await carregarHistorico(user.id);
       }
     } catch {
@@ -260,6 +263,8 @@ export default function App() {
 
   const dadosExibidos =
     historicoAtivo !== null ? historico[historicoAtivo]?.resultado : resultado;
+  const queryExibida =
+    historicoAtivo !== null ? historico[historicoAtivo]?.query : query;
   const nomeExibido =
     user?.user_metadata?.name?.split(" ")[0] ||
     user?.email?.split("@")[0] ||
@@ -325,6 +330,7 @@ export default function App() {
             <h1>Olfatto</h1>
             <p>Descubra novas fragrâncias e desfrute de novas experiências.</p>
           </div>
+          <div style={{ minWidth: "80px" }} />
         </header>
 
         <div className="conteudo">
@@ -332,11 +338,7 @@ export default function App() {
             <div className="resultado-area">
               <div className="query-exibida">
                 <span className="query-label">Sua busca</span>
-                <p>
-                  {historicoAtivo !== null
-                    ? historico[historicoAtivo]?.query
-                    : query}
-                </p>
+                <p>{queryExibida}</p>
               </div>
               {dadosExibidos.recomendacao && (
                 <div className="resposta-ia">
