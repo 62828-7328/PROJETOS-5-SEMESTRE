@@ -52,15 +52,6 @@ function PerfumeCard({ perfume, index }) {
           </span>
         ))}
       </div>
-      <div className="card-compat">
-        <div className="compat-bar">
-          <div
-            className="compat-fill"
-            style={{ width: `${(perfume.similarity * 100).toFixed(0)}%` }}
-          />
-        </div>
-        <span>{(perfume.similarity * 100).toFixed(0)}%</span>
-      </div>
     </div>
   );
 }

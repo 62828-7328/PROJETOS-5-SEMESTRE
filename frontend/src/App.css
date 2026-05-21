@@ -603,7 +603,6 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin-bottom: 12px;
 }
 
 .accord {
@@ -614,28 +613,6 @@ body {
   padding: 2px 9px;
   color: var(--text-muted);
   text-transform: capitalize;
-}
-
-.card-compat {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.compat-bar {
-  flex: 1;
-  height: 2px;
-  background: var(--border);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.compat-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--gold-dark), var(--gold));
-  border-radius: 2px;
 }
 
 /* ── NOVA BUSCA ── */
