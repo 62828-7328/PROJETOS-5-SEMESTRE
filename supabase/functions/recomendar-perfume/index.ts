@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { userQuery, genero, categoria } = await req.json()
+    const { userQuery, queryOriginal, genero, categoria } = await req.json()
     const geminiKey = Deno.env.get("GEMINI_API_KEY")!
     const hfToken = Deno.env.get("HUGGINGFACE_TOKEN")!
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!
@@ -24,17 +24,32 @@ serve(async (req) => {
       'masculino', 'feminino', 'unissex', 'nicho', 'designer', 'árabe', 'nacional',
       'intenso', 'suave', 'marcante', 'leve', 'sofisticado', 'elegante', 'refrescante',
       'verão', 'inverno', 'festa', 'trabalho', 'casual', 'esportivo', 'sedutor',
-      'quero', 'procuro', 'busco', 'indica', 'recomenda', 'sugere', 'similar',
-      'parecido', 'cheiroso', 'fragrante', 'olfativo', 'sillage', 'fixação'
+      'procuro', 'busco', 'indica', 'recomenda', 'sugere', 'similar', 'quero',
+      'parecido', 'cheiroso', 'fragrante', 'olfativo', 'sillage', 'fixação',
+      'woody', 'fresh', 'sweet', 'spicy', 'aquatic', 'musky', 'citrus'
     ]
 
-    const queryLower = userQuery.toLowerCase()
-    const ehSobrePerfume = palavrasChave.some(p => queryLower.includes(p))
+    const queryParaVerificar = (queryOriginal || userQuery).toLowerCase()
+    const ehPedidoPerfume = palavrasChave.some(p => queryParaVerificar.includes(p))
 
-    if (!ehSobrePerfume) {
+    if (!ehPedidoPerfume) {
+      const conversaResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `Você é o Olfatto, um assistente especialista em perfumes. O usuário disse: "${queryOriginal || userQuery}". Responda de forma breve, elegante e em português brasileiro. Se for uma saudação ou agradecimento, responda de forma simpática e pergunte se pode ajudar com alguma fragrância.` }] }],
+            generationConfig: { maxOutputTokens: 200, temperature: 0.8 }
+          })
+        }
+      )
+      const conversaData = await conversaResponse.json()
+      const resposta = conversaData.candidates?.[0]?.content?.parts?.[0]?.text || 'Posso ajudar com alguma fragrância?'
+
       return new Response(
-        JSON.stringify({ sucesso: false, error: 'Sou especialista apenas em perfumes! Descreva o tipo de fragrância que você procura.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' } }
+        JSON.stringify({ sucesso: true, recomendacao: resposta, dados: [] }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' } }
       )
     }
 
@@ -42,7 +57,7 @@ serve(async (req) => {
       "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction",
       {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${hfToken}`
         },
@@ -72,38 +87,51 @@ serve(async (req) => {
       : categoria === 'nicho' ? 'nicho'
       : ''
 
+    // Busca 15 perfumes e seleciona 3 aleatórios entre os melhores
     const { data: perfumes, error: rpcError } = await supabase.rpc('match_perfumes', {
       query_embedding: queryVector,
-      match_threshold: 0.3,
-      match_count: 5,
+      match_threshold: 0.45,
+      match_count: 15,
       filtro_genero: filtroGenero,
       filtro_categoria: filtroCategoria
     })
 
     if (rpcError) throw new Error(`Erro na busca do banco: ${rpcError.message}`)
 
-    const listaPerfumes = perfumes.map((p: any, i: number) => 
+    let pool = perfumes || []
+    if (pool.length === 0) {
+      const { data: perfumesFallback } = await supabase.rpc('match_perfumes', {
+        query_embedding: queryVector,
+        match_threshold: 0.3,
+        match_count: 15,
+        filtro_genero: filtroGenero,
+        filtro_categoria: filtroCategoria
+      })
+      pool = perfumesFallback || []
+    }
+
+    // Embaralha e pega 3
+    const embaralhados = pool.sort(() => Math.random() - 0.5)
+    const perfumesFinais = embaralhados.slice(0, 3)
+
+    const listaPerfumes = perfumesFinais.map((p: any, i: number) =>
       `${i+1}. ${p.nome} (${p.marca}) | Notas: ${p.notas} | Acordes: ${p.accords}`
     ).join('\n')
 
-    const prompt = `Você é um sommelier de perfumes brasileiro. O cliente pediu: "${userQuery}"
+    const prompt = `Você é um sommelier de perfumes brasileiro. O cliente pediu: "${queryOriginal || userQuery}"
 
 Perfumes encontrados:
 ${listaPerfumes}
 
 Responda OBRIGATORIAMENTE em português brasileiro seguindo EXATAMENTE este formato sem nenhum texto extra:
 
-RECOMENDACAO: [2 frases elegantes recomendando os perfumes]
-NOTAS_1: [notas do perfume 1 traduzidas, separadas por |]
-ACORDES_1: [acordes do perfume 1 traduzidos, separados por ,]
-NOTAS_2: [notas do perfume 2 traduzidas, separadas por |]
-ACORDES_2: [acordes do perfume 2 traduzidos, separados por ,]
-NOTAS_3: [notas do perfume 3 traduzidas, separadas por |]
-ACORDES_3: [acordes do perfume 3 traduzidos, separados por ,]
-NOTAS_4: [notas do perfume 4 traduzidas, separadas por |]
-ACORDES_4: [acordes do perfume 4 traduzidos, separados por ,]
-NOTAS_5: [notas do perfume 5 traduzidas, separadas por |]
-ACORDES_5: [acordes do perfume 5 traduzidos, separados por ,]`
+RECOMENDACAO: [2 frases elegantes recomendando os perfumes mencionando os nomes]
+NOTAS_1: [notas do perfume 1 traduzidas para português, separadas por |]
+ACORDES_1: [acordes do perfume 1 traduzidos para português, separados por ,]
+NOTAS_2: [notas do perfume 2 traduzidas para português, separadas por |]
+ACORDES_2: [acordes do perfume 2 traduzidos para português, separados por ,]
+NOTAS_3: [notas do perfume 3 traduzidas para português, separadas por |]
+ACORDES_3: [acordes do perfume 3 traduzidos para português, separados por ,]`
 
     const chatResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${geminiKey}`,
@@ -119,12 +147,11 @@ ACORDES_5: [acordes do perfume 5 traduzidos, separados por ,]`
 
     const chatData = await chatResponse.json()
     const fullText = chatData.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    console.log("Gemini response:", fullText.slice(0, 500))
 
     const recomendacaoMatch = fullText.match(/RECOMENDACAO:\s*(.+?)(?=NOTAS_1:|$)/s)
     const recomendacao = recomendacaoMatch?.[1]?.trim() || "Encontrei ótimas opções para você!"
 
-    const perfumesComTraducao = perfumes.map((p: any, i: number) => {
+    const perfumesComTraducao = perfumesFinais.map((p: any, i: number) => {
       const notasMatch = fullText.match(new RegExp(`NOTAS_${i+1}:\\s*(.+?)(?=ACORDES_${i+1}:|$)`, 's'))
       const acordesMatch = fullText.match(new RegExp(`ACORDES_${i+1}:\\s*(.+?)(?=NOTAS_${i+2}:|ACORDES_${i+2}:|$)`, 's'))
       return {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./App.css";
 import { supabase } from "./supabase";
 
@@ -111,17 +111,19 @@ export default function App() {
   const [categoria, setCategoria] = useState("");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [resultado, setResultado] = useState(null);
+  const [mensagens, setMensagens] = useState([]);
   const [erro, setErro] = useState("");
-  const [historico, setHistorico] = useState([]);
-  const [historicoAtivo, setHistoricoAtivo] = useState(null);
+  const [sessoes, setSessoes] = useState([]);
+  const [sessaoAtiva, setSessaoAtiva] = useState(null);
   const [sidebarAberta, setSidebarAberta] = useState(false);
+  const [conversando, setConversando] = useState(false);
+  const bottomRef = useRef(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
-        carregarHistorico(session.user.id);
+        carregarSessoes(session.user.id);
       }
     });
 
@@ -130,53 +132,68 @@ export default function App() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session?.user ?? null;
       setUser(u);
-      if (u) carregarHistorico(u.id);
+      if (u) carregarSessoes(u.id);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  async function carregarHistorico(userId) {
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [mensagens, loading]);
+
+  async function carregarSessoes(userId) {
+    const { data } = await supabase
+      .from("sessoes")
+      .select("*")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(5);
+
+    if (data) setSessoes(data);
+  }
+
+  async function carregarMensagensSessao(sessaoId) {
     const { data } = await supabase
       .from("historico")
       .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(5);
+      .eq("sessao_id", sessaoId)
+      .order("created_at", { ascending: true });
 
     if (data) {
-      setHistorico(
-        data.map((h) => ({
-          id: h.id,
-          query: h.query,
-          queryCompleta: h.query_completa || h.query,
-          resultado: { recomendacao: h.recomendacao, dados: h.dados },
-        })),
-      );
+      const msgs = [];
+      data.forEach((h) => {
+        msgs.push({ tipo: "usuario", texto: h.query });
+        msgs.push({ tipo: "ia", recomendacao: h.recomendacao, dados: h.dados });
+      });
+      setMensagens(msgs);
     }
   }
 
-  async function salvarHistorico(userId, queryOriginal, queryCompleta, data) {
-    await supabase.from("historico").insert({
-      user_id: userId,
-      query: queryOriginal,
-      query_completa: queryCompleta,
-      recomendacao: data.recomendacao,
-      dados: data.dados,
-    });
+  async function criarSessao(userId, titulo) {
+    const { data } = await supabase
+      .from("sessoes")
+      .insert({ user_id: userId, titulo })
+      .select()
+      .single();
+    return data;
   }
 
-  async function apagarHistorico(index) {
-    const item = historico[index];
-    if (user && item.id) {
-      await supabase.from("historico").delete().eq("id", item.id);
-    }
-    setHistorico((prev) => prev.filter((_, i) => i !== index));
-    if (historicoAtivo === index) {
-      setHistoricoAtivo(null);
-      setResultado(null);
-    } else if (historicoAtivo > index) {
-      setHistoricoAtivo((prev) => prev - 1);
+  async function atualizarSessao(sessaoId) {
+    await supabase
+      .from("sessoes")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", sessaoId);
+  }
+
+  async function apagarSessao(sessaoId, index) {
+    await supabase.from("historico").delete().eq("sessao_id", sessaoId);
+    await supabase.from("sessoes").delete().eq("id", sessaoId);
+    setSessoes((prev) => prev.filter((_, i) => i !== index));
+    if (sessaoAtiva === sessaoId) {
+      setSessaoAtiva(null);
+      setMensagens([]);
+      setConversando(false);
     }
   }
 
@@ -203,8 +220,7 @@ export default function App() {
     if (!query.trim()) return;
     setLoading(true);
     setErro("");
-    setResultado(null);
-    setHistoricoAtivo(null);
+    setConversando(true);
 
     const queryOriginal = query;
     const queryCompleta = [
@@ -215,27 +231,65 @@ export default function App() {
       .filter(Boolean)
       .join(" ");
 
+    setMensagens((prev) => [
+      ...prev,
+      { tipo: "usuario", texto: queryOriginal },
+    ]);
+    setQuery("");
+
     try {
+      let sessaoId = sessaoAtiva;
+      if (!sessaoId && user) {
+        const novaSessao = await criarSessao(
+          user.id,
+          queryOriginal.slice(0, 40),
+        );
+        sessaoId = novaSessao?.id;
+        setSessaoAtiva(sessaoId);
+        await carregarSessoes(user.id);
+      }
+
       const res = await fetch(SUPABASE_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ userQuery: queryCompleta, genero, categoria }),
+        body: JSON.stringify({
+          userQuery: queryCompleta,
+          queryOriginal: queryOriginal,
+          genero,
+          categoria,
+        }),
       });
 
       const data = await res.json();
       if (!data.sucesso) {
         setErro(data.error || "Erro ao buscar perfumes. Tente novamente.");
+        setLoading(false);
         return;
       }
 
-      setResultado(data);
+      setMensagens((prev) => [
+        ...prev,
+        {
+          tipo: "ia",
+          recomendacao: data.recomendacao,
+          dados: data.dados,
+        },
+      ]);
 
-      if (user) {
-        await salvarHistorico(user.id, queryOriginal, queryCompleta, data);
-        await carregarHistorico(user.id);
+      if (user && sessaoId) {
+        await supabase.from("historico").insert({
+          user_id: user.id,
+          sessao_id: sessaoId,
+          query: queryOriginal,
+          query_completa: queryCompleta,
+          recomendacao: data.recomendacao,
+          dados: data.dados,
+        });
+        await atualizarSessao(sessaoId);
+        await carregarSessoes(user.id);
       }
     } catch {
       setErro("Erro ao buscar perfumes. Tente novamente.");
@@ -248,14 +302,20 @@ export default function App() {
     await supabase.auth.signOut();
     setUser(null);
     setAnonimo(false);
-    setHistorico([]);
-    setResultado(null);
+    setSessoes([]);
+    setMensagens([]);
+    setSessaoAtiva(null);
+    setConversando(false);
   }
 
-  const dadosExibidos =
-    historicoAtivo !== null ? historico[historicoAtivo]?.resultado : resultado;
-  const queryExibida =
-    historicoAtivo !== null ? historico[historicoAtivo]?.query : query;
+  function novaConversa() {
+    setSessaoAtiva(null);
+    setMensagens([]);
+    setConversando(false);
+    setQuery("");
+    setSidebarAberta(false);
+  }
+
   const nomeExibido =
     user?.user_metadata?.name?.split(" ")[0] ||
     user?.email?.split("@")[0] ||
@@ -279,19 +339,33 @@ export default function App() {
       {user && (
         <aside className={`sidebar ${sidebarAberta ? "aberta" : ""}`}>
           <div className="sidebar-nome">{nomeExibido}</div>
+          <button className="nova-conversa-btn" onClick={novaConversa}>
+            + nova conversa
+          </button>
           <nav className="sidebar-nav">
-            {historico.map((item, i) => (
-              <div key={i} className="hist-item">
+            {sessoes.map((sessao, i) => (
+              <div key={sessao.id} className="hist-item">
                 <button
-                  className={`hist-btn ${historicoAtivo === i ? "ativo" : ""}`}
+                  className={`hist-btn ${sessaoAtiva === sessao.id ? "ativo" : ""}`}
                   onClick={() => {
-                    setHistoricoAtivo(historicoAtivo === i ? null : i);
-                    setResultado(null);
+                    if (sessaoAtiva === sessao.id) {
+                      setSessaoAtiva(null);
+                      setMensagens([]);
+                      setConversando(false);
+                    } else {
+                      setSessaoAtiva(sessao.id);
+                      setConversando(true);
+                      carregarMensagensSessao(sessao.id);
+                    }
+                    setSidebarAberta(false);
                   }}
                 >
-                  histórico {i + 1}
+                  {sessao.titulo?.slice(0, 18) || `histórico ${i + 1}`}
                 </button>
-                <button className="hist-del" onClick={() => apagarHistorico(i)}>
+                <button
+                  className="hist-del"
+                  onClick={() => apagarSessao(sessao.id, i)}
+                >
                   ✕
                 </button>
               </div>
@@ -325,29 +399,70 @@ export default function App() {
         </header>
 
         <div className="conteudo">
-          {dadosExibidos ? (
+          {conversando ? (
             <div className="resultado-area">
-              <div className="query-exibida">
-                <span className="query-label">Sua busca</span>
-                <p>{queryExibida}</p>
-              </div>
-              {dadosExibidos.recomendacao && (
-                <div className="resposta-ia">
-                  <span className="resposta-label">Resposta da IA</span>
-                  <p>{dadosExibidos.recomendacao}</p>
+              {mensagens.map((msg, i) =>
+                msg.tipo === "usuario" ? (
+                  <div key={i} className="chat-row chat-user">
+                    <div className="chat-bubble chat-bubble-user">
+                      <p>{msg.texto}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div key={i} className="ia-bloco">
+                    {msg.recomendacao && (
+                      <div className="chat-row chat-ia">
+                        <div className="chat-avatar">✦</div>
+                        <div className="chat-bubble chat-bubble-ia">
+                          <span className="resposta-label">Resposta da IA</span>
+                          <p>{msg.recomendacao}</p>
+                        </div>
+                      </div>
+                    )}
+                    {msg.dados && msg.dados.length > 0 && (
+                      <div className="cards-wrapper">
+                        <div className="cards-grid">
+                          {msg.dados.map((p, j) => (
+                            <PerfumeCard
+                              key={`${i}-${j}`}
+                              perfume={p}
+                              index={j}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ),
+              )}
+
+              {loading && (
+                <div className="chat-row chat-ia">
+                  <div className="chat-avatar">✦</div>
+                  <div className="chat-bubble chat-bubble-ia">
+                    <span className="loading-dots">
+                      <span>.</span>
+                      <span>.</span>
+                      <span>.</span>
+                    </span>
+                  </div>
                 </div>
               )}
-              <div className="cards-grid">
-                {dadosExibidos.dados.map((p, i) => (
-                  <PerfumeCard key={p.id} perfume={p} index={i} />
-                ))}
-              </div>
+
+              {erro && <p className="erro">{erro}</p>}
+              <div ref={bottomRef} />
+
               <div className="nova-busca">
                 <textarea
                   className="query-input"
-                  placeholder="..."
+                  placeholder="Responder a Olfatto..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    (e.preventDefault(), handleBuscarClick())
+                  }
                 />
                 <div className="busca-row">
                   <button
@@ -359,7 +474,6 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              {erro && <p className="erro">{erro}</p>}
             </div>
           ) : (
             <div className="busca-area">
