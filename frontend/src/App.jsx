@@ -171,9 +171,16 @@ export default function App() {
   }
 
   async function criarSessao(userId, titulo) {
+    const { count } = await supabase
+      .from("sessoes")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId);
+
+    const numero = (count || 0) + 1;
+
     const { data } = await supabase
       .from("sessoes")
-      .insert({ user_id: userId, titulo })
+      .insert({ user_id: userId, titulo: `histórico ${numero}` })
       .select()
       .single();
     return data;

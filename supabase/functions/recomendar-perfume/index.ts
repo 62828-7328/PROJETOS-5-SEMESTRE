@@ -29,26 +29,43 @@ serve(async (req) => {
       'woody', 'fresh', 'sweet', 'spicy', 'aquatic', 'musky', 'citrus'
     ]
 
+    const palavrasConversa = [
+      'obrigado', 'obrigada', 'olá', 'oi', 'tudo bem', 'valeu', 'legal', 'ótimo',
+      'perfeito', 'gostei', 'adorei', 'excelente', 'muito bom', 'ok', 'entendi'
+    ]
+
     const queryParaVerificar = (queryOriginal || userQuery).toLowerCase()
     const ehPedidoPerfume = palavrasChave.some(p => queryParaVerificar.includes(p))
+    const ehConversa = palavrasConversa.some(p => queryParaVerificar.includes(p))
 
-    if (!ehPedidoPerfume) {
+    if (!ehPedidoPerfume && ehConversa) {
       const conversaResponse = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${geminiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: `Você é o Olfatto, um assistente especialista em perfumes. O usuário disse: "${queryOriginal || userQuery}". Responda de forma breve, elegante e em português brasileiro. Se for uma saudação ou agradecimento, responda de forma simpática e pergunte se pode ajudar com alguma fragrância.` }] }],
+            contents: [{ parts: [{ text: `Você é o Olfatto, um assistente especialista em perfumes. O usuário disse: "${queryOriginal || userQuery}". Responda de forma breve, elegante e em português brasileiro. Responda à saudação ou agradecimento de forma simpática e pergunte se pode ajudar com alguma fragrância.` }] }],
             generationConfig: { maxOutputTokens: 200, temperature: 0.8 }
           })
         }
       )
       const conversaData = await conversaResponse.json()
-      const resposta = conversaData.candidates?.[0]?.content?.parts?.[0]?.text || 'Posso ajudar com alguma fragrância?'
+      const resposta = conversaData.candidates?.[0]?.content?.parts?.[0]?.text || 'Fico feliz em ajudar! Deseja descobrir alguma fragrância especial?'
 
       return new Response(
         JSON.stringify({ sucesso: true, recomendacao: resposta, dados: [] }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' } }
+      )
+    }
+
+    if (!ehPedidoPerfume && !ehConversa) {
+      return new Response(
+        JSON.stringify({
+          sucesso: true,
+          recomendacao: 'Sou especialista apenas em perfumes e fragrâncias. Posso ajudá-lo a encontrar a fragrância perfeita para você! Descreva o tipo de perfume que procura.',
+          dados: []
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' } }
       )
     }
@@ -87,7 +104,6 @@ serve(async (req) => {
       : categoria === 'nicho' ? 'nicho'
       : ''
 
-    // Busca 15 perfumes e seleciona 3 aleatórios entre os melhores
     const { data: perfumes, error: rpcError } = await supabase.rpc('match_perfumes', {
       query_embedding: queryVector,
       match_threshold: 0.45,
@@ -110,9 +126,23 @@ serve(async (req) => {
       pool = perfumesFallback || []
     }
 
-    // Embaralha e pega 3
-    const embaralhados = pool.sort(() => Math.random() - 0.5)
-    const perfumesFinais = embaralhados.slice(0, 3)
+    // Ordena por similaridade e divide em 3 grupos, pegando 1 aleatório de cada
+    const perfumesOrdenados = pool.sort((a: any, b: any) => b.similarity - a.similarity)
+
+    const grupo1 = perfumesOrdenados.slice(0, 3)
+    const grupo2 = perfumesOrdenados.slice(3, 6)
+    const grupo3 = perfumesOrdenados.slice(6, 9)
+
+    function aleatorio(arr: any[]) {
+      if (!arr || arr.length === 0) return null
+      return arr[Math.floor(Math.random() * arr.length)]
+    }
+
+    const perfumesFinais = [
+      aleatorio(grupo1),
+      aleatorio(grupo2.length > 0 ? grupo2 : grupo1),
+      aleatorio(grupo3.length > 0 ? grupo3 : grupo1),
+    ].filter((p, i, arr) => p && arr.findIndex(x => x?.id === p?.id) === i)
 
     const listaPerfumes = perfumesFinais.map((p: any, i: number) =>
       `${i+1}. ${p.nome} (${p.marca}) | Notas: ${p.notas} | Acordes: ${p.accords}`
