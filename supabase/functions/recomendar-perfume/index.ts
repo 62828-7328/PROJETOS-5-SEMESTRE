@@ -126,42 +126,27 @@ serve(async (req) => {
       pool = perfumesFallback || []
     }
 
-    // Ordena por similaridade e divide em 3 grupos, pegando 1 aleatório de cada
-    const perfumesOrdenados = pool.sort((a: any, b: any) => b.similarity - a.similarity)
-
-    const grupo1 = perfumesOrdenados.slice(0, 3)
-    const grupo2 = perfumesOrdenados.slice(3, 6)
-    const grupo3 = perfumesOrdenados.slice(6, 9)
-
-    function aleatorio(arr: any[]) {
-      if (!arr || arr.length === 0) return null
-      return arr[Math.floor(Math.random() * arr.length)]
-    }
-
-    const perfumesFinais = [
-      aleatorio(grupo1),
-      aleatorio(grupo2.length > 0 ? grupo2 : grupo1),
-      aleatorio(grupo3.length > 0 ? grupo3 : grupo1),
-    ].filter((p, i, arr) => p && arr.findIndex(x => x?.id === p?.id) === i)
-
-    const listaPerfumes = perfumesFinais.map((p: any, i: number) =>
+    const listaPerfumes = pool.map((p: any, i: number) =>
       `${i+1}. ${p.nome} (${p.marca}) | Notas: ${p.notas} | Acordes: ${p.accords}`
     ).join('\n')
 
     const prompt = `Você é um sommelier de perfumes brasileiro. O cliente pediu: "${queryOriginal || userQuery}"
 
-Perfumes encontrados:
+Perfumes disponíveis:
 ${listaPerfumes}
 
-Responda OBRIGATORIAMENTE em português brasileiro seguindo EXATAMENTE este formato sem nenhum texto extra:
+Escolha os 3 perfumes DIFERENTES e mais adequados para o pedido do cliente. Responda OBRIGATORIAMENTE em português brasileiro seguindo EXATAMENTE este formato sem nenhum texto extra:
 
-RECOMENDACAO: [2 frases elegantes recomendando os perfumes mencionando os nomes]
-NOTAS_1: [notas do perfume 1 traduzidas para português, separadas por |]
-ACORDES_1: [acordes do perfume 1 traduzidos para português, separados por ,]
-NOTAS_2: [notas do perfume 2 traduzidas para português, separadas por |]
-ACORDES_2: [acordes do perfume 2 traduzidos para português, separados por ,]
-NOTAS_3: [notas do perfume 3 traduzidas para português, separadas por |]
-ACORDES_3: [acordes do perfume 3 traduzidos para português, separados por ,]`
+RECOMENDACAO: [2 frases elegantes apresentando os 3 perfumes escolhidos e explicando por que combinam com o pedido]
+ESCOLHIDO_1: [número do primeiro perfume escolhido]
+NOTAS_1: [notas traduzidas para português, separadas por |]
+ACORDES_1: [acordes traduzidos para português, separados por ,]
+ESCOLHIDO_2: [número do segundo perfume escolhido, DIFERENTE do primeiro]
+NOTAS_2: [notas traduzidas para português, separadas por |]
+ACORDES_2: [acordes traduzidos para português, separados por ,]
+ESCOLHIDO_3: [número do terceiro perfume escolhido, DIFERENTE dos anteriores]
+NOTAS_3: [notas traduzidas para português, separadas por |]
+ACORDES_3: [acordes traduzidos para português, separados por ,]`
 
     const chatResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${geminiKey}`,
@@ -178,21 +163,46 @@ ACORDES_3: [acordes do perfume 3 traduzidos para português, separados por ,]`
     const chatData = await chatResponse.json()
     const fullText = chatData.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
-    const recomendacaoMatch = fullText.match(/RECOMENDACAO:\s*(.+?)(?=NOTAS_1:|$)/s)
+    const recomendacaoMatch = fullText.match(/RECOMENDACAO:\s*(.+?)(?=ESCOLHIDO_1:|$)/s)
     const recomendacao = recomendacaoMatch?.[1]?.trim() || "Encontrei ótimas opções para você!"
 
-    const perfumesComTraducao = perfumesFinais.map((p: any, i: number) => {
+    const escolhido1 = parseInt(fullText.match(/ESCOLHIDO_1:\s*(\d+)/)?.[1] || '1') - 1
+    const escolhido2 = parseInt(fullText.match(/ESCOLHIDO_2:\s*(\d+)/)?.[1] || '2') - 1
+    const escolhido3 = parseInt(fullText.match(/ESCOLHIDO_3:\s*(\d+)/)?.[1] || '3') - 1
+
+    // Garante índices diferentes e válidos
+    const indicesUsados = new Set<number>()
+    const indicesFinais: number[] = []
+
+    for (const idx of [escolhido1, escolhido2, escolhido3]) {
+      const idxValido = Math.max(0, Math.min(idx, pool.length - 1))
+      if (!indicesUsados.has(idxValido)) {
+        indicesUsados.add(idxValido)
+        indicesFinais.push(idxValido)
+      }
+    }
+
+    // Completa com outros índices se necessário
+    for (let i = 0; indicesFinais.length < 3 && i < pool.length; i++) {
+      if (!indicesUsados.has(i)) {
+        indicesUsados.add(i)
+        indicesFinais.push(i)
+      }
+    }
+
+    const perfumesFinais = indicesFinais.map((idx, i) => {
+      const p = pool[idx]
       const notasMatch = fullText.match(new RegExp(`NOTAS_${i+1}:\\s*(.+?)(?=ACORDES_${i+1}:|$)`, 's'))
-      const acordesMatch = fullText.match(new RegExp(`ACORDES_${i+1}:\\s*(.+?)(?=NOTAS_${i+2}:|ACORDES_${i+2}:|$)`, 's'))
+      const acordesMatch = fullText.match(new RegExp(`ACORDES_${i+1}:\\s*(.+?)(?=ESCOLHIDO_${i+2}:|NOTAS_${i+2}:|$)`, 's'))
       return {
         ...p,
         notas: notasMatch?.[1]?.trim() || p.notas,
         accords: acordesMatch?.[1]?.trim() || p.accords
       }
-    })
+    }).filter(Boolean)
 
     return new Response(
-      JSON.stringify({ sucesso: true, recomendacao, dados: perfumesComTraducao }),
+      JSON.stringify({ sucesso: true, recomendacao, dados: perfumesFinais }),
       { headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" } }
     )
 
