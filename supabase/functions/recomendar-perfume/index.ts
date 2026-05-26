@@ -130,14 +130,18 @@ serve(async (req) => {
       `${i+1}. ${p.nome} (${p.marca}) | Notas: ${p.notas} | Acordes: ${p.accords}`
     ).join('\n')
 
-    const prompt = `Você é um sommelier de perfumes brasileiro. O cliente pediu: "${queryOriginal || userQuery}"
+   const prompt = `Você é um sommelier de perfumes brasileiro. O cliente pediu: "${queryOriginal || userQuery}"
+
+Filtros selecionados pelo cliente: Gênero: ${filtroGenero || 'não especificado'} | Categoria: ${filtroCategoria || 'não especificada'}
 
 Perfumes disponíveis:
 ${listaPerfumes}
 
-Escolha os 3 perfumes DIFERENTES e mais adequados para o pedido do cliente. Responda OBRIGATORIAMENTE em português brasileiro seguindo EXATAMENTE este formato sem nenhum texto extra:
+IMPORTANTE: Os filtros selecionados têm prioridade absoluta sobre o texto do cliente. Se o texto contradiz os filtros, escolha perfumes que sigam os filtros e mencione educadamente na recomendação que seguiu as opções selecionadas.
 
-RECOMENDACAO: [2 frases elegantes apresentando os 3 perfumes escolhidos e explicando por que combinam com o pedido]
+Escolha os 3 perfumes DIFERENTES e mais adequados respeitando os filtros. Responda OBRIGATORIAMENTE em português brasileiro seguindo EXATAMENTE este formato sem nenhum texto extra:
+
+RECOMENDACAO: [2 frases elegantes apresentando os 3 perfumes. Se o texto contradiz os filtros, mencione que seguiu as opções selecionadas]
 ESCOLHIDO_1: [número do primeiro perfume escolhido]
 NOTAS_1: [notas traduzidas para português, separadas por |]
 ACORDES_1: [acordes traduzidos para português, separados por ,]
