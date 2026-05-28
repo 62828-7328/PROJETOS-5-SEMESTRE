@@ -2,17 +2,19 @@ import { useState, useEffect, useRef } from "react";
 import "./App.css";
 import { supabase } from "./supabase";
 
+// URLs do backend vindas do .env
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const generos = ["masculino", "feminino", "compartilhável"];
 const categorias = ["nacional", "árabe", "designer", "nicho"];
 
-function traduzirGenero(genero) {
-  if (genero === "men") return "masculino";
-  if (genero === "women") return "feminino";
-  if (genero === "unisex") return "unissex";
-  return genero;
+// converte os valores em ingles do banco pra portugues
+function traduzirGenero(g) {
+  if (g === "men") return "masculino";
+  if (g === "women") return "feminino";
+  if (g === "unisex") return "unissex";
+  return g;
 }
 
 function PerfumeCard({ perfume, index }) {
@@ -20,6 +22,7 @@ function PerfumeCard({ perfume, index }) {
     .split("|")
     .map((n) => n.trim())
     .filter(Boolean);
+  // pega só os 3 primeiros acordes pra nao poluir o card
   const accords = perfume.accords
     .split(",")
     .map((a) => a.trim())
@@ -58,6 +61,7 @@ function PerfumeCard({ perfume, index }) {
 
 function ModalLogin({ onAnonimo }) {
   async function handleGoogle() {
+    // redireciona pro Google oauth pelo Supabase
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: window.location.origin },
@@ -120,6 +124,7 @@ export default function App() {
   const bottomRef = useRef(null);
 
   useEffect(() => {
+    // checa se ja tem sessão salva no navegador
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
@@ -138,6 +143,7 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // scroll automático quando chega nova mensagem
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensagens, loading]);
@@ -170,7 +176,8 @@ export default function App() {
     }
   }
 
-  async function criarSessao(userId, titulo) {
+  async function criarSessao(userId) {
+    // conta quantas sessões ja existem pra numerar corretamente
     const { count } = await supabase
       .from("sessoes")
       .select("*", { count: "exact", head: true })
@@ -194,6 +201,7 @@ export default function App() {
   }
 
   async function apagarSessao(sessaoId, index) {
+    // apaga primeiro o historico depois a sessão
     await supabase.from("historico").delete().eq("sessao_id", sessaoId);
     await supabase.from("sessoes").delete().eq("id", sessaoId);
     setSessoes((prev) => prev.filter((_, i) => i !== index));
@@ -206,6 +214,7 @@ export default function App() {
 
   function handleBuscarClick() {
     if (!query.trim()) return;
+
     if (!user && !anonimo) {
       setMostrarModal(true);
       setPendingBusca(true);
@@ -240,17 +249,17 @@ export default function App() {
 
     setMensagens((prev) => [
       ...prev,
+
       { tipo: "usuario", texto: queryOriginal },
     ]);
     setQuery("");
 
     try {
       let sessaoId = sessaoAtiva;
+
+      // cria uma nova sessão se for a primeira mensagem do chat
       if (!sessaoId && user) {
-        const novaSessao = await criarSessao(
-          user.id,
-          queryOriginal.slice(0, 40),
-        );
+        const novaSessao = await criarSessao(user.id);
         sessaoId = novaSessao?.id;
         setSessaoAtiva(sessaoId);
         await carregarSessoes(user.id);
@@ -332,6 +341,7 @@ export default function App() {
     <div
       className="app"
       onClick={(e) => {
+        // fecha a sidebar se clicar fora dela
         if (
           sidebarAberta &&
           !e.target.closest(".sidebar") &&
@@ -346,6 +356,7 @@ export default function App() {
       {user && (
         <aside className={`sidebar ${sidebarAberta ? "aberta" : ""}`}>
           <div className="sidebar-nome">{nomeExibido}</div>
+
           <button className="nova-conversa-btn" onClick={novaConversa}>
             + nova conversa
           </button>
@@ -358,6 +369,7 @@ export default function App() {
                     if (sessaoAtiva === sessao.id) {
                       setSessaoAtiva(null);
                       setMensagens([]);
+
                       setConversando(false);
                     } else {
                       setSessaoAtiva(sessao.id);
