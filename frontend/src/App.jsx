@@ -215,6 +215,13 @@ export default function App() {
   function handleBuscarClick() {
     if (!query.trim()) return;
 
+    if (!genero || !categoria) {
+      setErro(
+        "Por favor, selecione o gênero e a categoria para completar a busca!",
+      );
+      return;
+    }
+
     if (!user && !anonimo) {
       setMostrarModal(true);
       setPendingBusca(true);
@@ -257,7 +264,7 @@ export default function App() {
     try {
       let sessaoId = sessaoAtiva;
 
-      // cria uma nova sessão se for a primeira mensagem do chat
+      // cria nova sessao se for a primeira mensagem do chat
       if (!sessaoId && user) {
         const novaSessao = await criarSessao(user.id);
         sessaoId = novaSessao?.id;
@@ -545,8 +552,11 @@ export default function App() {
                   (e.preventDefault(), handleBuscarClick())
                 }
               />
-
-              {erro && <p className="erro">{erro}</p>}
+              {erro && (
+                <p className="erro" style={{ marginBottom: "12px" }}>
+                  {erro}
+                </p>
+              )}
 
               <div className="busca-row">
                 <button
