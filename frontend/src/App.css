@@ -230,6 +230,8 @@ width: 100%;
 
 .sair-btn {
   flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
