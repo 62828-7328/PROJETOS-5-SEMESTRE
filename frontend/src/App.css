@@ -125,14 +125,13 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 24px 12px;
+  padding: 24px 12px 12px 12px;
   position: fixed;
   top: 0;
   left: -160px;
   height: 100vh;
   z-index: 100;
   transition: left 0.3s ease;
-  gap: 8px;
   overflow: hidden;
 }
 
@@ -230,9 +229,9 @@ width: 100%;
 
 .sair-btn {
   flex-shrink: 0;
-  position: sticky;
-  bottom: 0;
-  background: var(--surface);
+  width: 100%;
+  text-align: center;
+  background: transparent;
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 7px 20px;
@@ -241,8 +240,7 @@ width: 100%;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.2s;
-  width: 100%;
-  text-align: center;
+  margin-top: 8px;
 }
 
 .sair-btn:hover {
