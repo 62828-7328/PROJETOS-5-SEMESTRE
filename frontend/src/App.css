@@ -125,11 +125,12 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 24px 12px 12px 12px;
+  padding: 24px 12px 20px 12px;
   position: fixed;
   top: 0;
   left: -160px;
   height: 100vh;
+  height: 100dvh;
   z-index: 100;
   transition: left 0.3s ease;
   overflow: hidden;
@@ -240,7 +241,7 @@ width: 100%;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.2s;
-  margin-top: 8px;
+  margin-top: auto;
 }
 
 .sair-btn:hover {
@@ -529,7 +530,7 @@ flex: 1;
 .chat-bubble-ia {
   background: var(--surface);
   border: 1px solid var(--border);
- border-left: 3px solid var(--gold);
+  border-left: 3px solid var(--gold);
   border-bottom-left-radius: 4px;
   color: var(--text);
 }
@@ -686,6 +687,13 @@ flex: 1;
 }
 /*responsividade */
 @media (max-width: 600px) {
+  .sidebar {
+    width: 180px;
+    left: -180px;
+  }
+  .sidebar.aberta {
+    left: 0;
+  }
   .conteudo { padding: 20px 16px; }
   .features { grid-template-columns: 1fr; }
   .cards-grid { grid-template-columns: 1fr; }
