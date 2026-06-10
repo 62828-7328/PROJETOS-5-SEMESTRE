@@ -6,7 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -18,11 +17,10 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     const supabase = createClient(supabaseUrl, supabaseKey)
-
     // palavras que indicam que é uma busca de perfume
     const palavrasChave = [
 
-     'perfume', 'fragrância', 'fragrance', 'aroma', 'cheiro', 'cologne', 'eau de',
+      'perfume', 'fragrância', 'fragrance', 'aroma', 'cheiro', 'cologne', 'eau de',
       'floral', 'amadeirado', 'cítrico', 'oriental', 'fresco', 'doce', 'almiscarado',
       'notas', 'base', 'topo', 'coração', 'oud', 'baunilha', 'rosa', 'jasmim',
       'masculino', 'feminino', 'unissex', 'nicho', 'designer', 'árabe', 'nacional',
@@ -33,14 +31,14 @@ serve(async (req) => {
       'woody', 'fresh', 'sweet', 'spicy', 'aquatic', 'musky', 'citrus'
     ]
 
-    // palavras de conversa casual tipo "obrigado", "oi" etc
+    // palavras de conversa casual tipo "obrigado" "oi" etc
     const palavrasConversa = [
       'obrigado', 'obrigada', 'olá', 'oi', 'tudo bem', 'valeu', 'legal', 'ótimo',
       'perfeito', 'gostei', 'adorei', 'excelente', 'muito bom', 'ok', 'entendi'
     ]
 
     // usa a query original (sem os filtros) pra verificar o contexto
-    const queryParaVerificar = (queryOriginal || userQuery).toLowerCase()
+     const queryParaVerificar = (queryOriginal || userQuery).toLowerCase()
     const ehPedidoPerfume = palavrasChave.some(p => queryParaVerificar.includes(p))
     const ehConversa = palavrasConversa.some(p => queryParaVerificar.includes(p))
 
@@ -60,15 +58,13 @@ serve(async (req) => {
       )
       const conversaData = await conversaResponse.json()
     const resposta = conversaData.candidates?.[0]?.content?.parts?.[0]?.text || 'Fico feliz em ajudar! Deseja descobrir alguma fragrância especial?'
-
       return new Response(
 
         JSON.stringify({ sucesso: true, recomendacao: resposta, dados: [] }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' } }
       )
     }
-
-    // se não tem nada a ver com perfume, recusa educadamente
+    // se não tem nada a ver com perfume, recusa o pedido
     if (!ehPedidoPerfume && !ehConversa) {
 
       return new Response(
@@ -83,7 +79,7 @@ serve(async (req) => {
     }
 
     // gera o vetor de embedding pelo HuggingFace,usei o all-MiniLM-L6-v2 porque é leve e funciona bem pra essa busca semântica
-    const embResponse = await fetch(
+     const embResponse = await fetch(
 
       "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction",
       {
@@ -117,11 +113,11 @@ serve(async (req) => {
      : categoria === 'designer' ? 'designer'
      : categoria === 'nicho' ? 'nicho'
     : ''
-
     // busca os 15 mais similares com threshold alto primeiro
     const { data: perfumes, error: rpcError } = await supabase.rpc('match_perfumes', {
 
       query_embedding: queryVector,
+
       match_threshold: 0.45,
       match_count: 15,
       filtro_genero: filtroGenero,
@@ -142,7 +138,6 @@ serve(async (req) => {
       })
       pool = perfumesFallback || []
     }
-
     const listaPerfumes = pool.map((p: any, i: number) =>
    `${i+1}. ${p.nome} (${p.marca}) | Notas: ${p.notas} | Acordes: ${p.accords}`
     ).join('\n')
@@ -185,14 +180,14 @@ ACORDES_3: [acordes traduzidos para português, separados por ,]`
     const fullText = chatData.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
     const recomendacaoMatch = fullText.match(/RECOMENDACAO:\s*(.+?)(?=ESCOLHIDO_1:|$)/s)
+    
     const recomendacao = recomendacaoMatch?.[1]?.trim() || "Encontrei ótimas opções para você!"
-
     // pega quais perfumes o gemini escolheu
     const escolhido1 = parseInt(fullText.match(/ESCOLHIDO_1:\s*(\d+)/)?.[1] || '1') - 1
     const escolhido2 = parseInt(fullText.match(/ESCOLHIDO_2:\s*(\d+)/)?.[1] || '2') - 1
     const escolhido3 = parseInt(fullText.match(/ESCOLHIDO_3:\s*(\d+)/)?.[1] || '3') - 1
 
-    // garante que os 3 perfumes sao diferentes e que os índices são válidos
+    // garante que os 3 perfumes sao diferentes e que os índices são validos
     const indicesUsados = new Set<number>()
     const indicesFinais: number[] = []
 
@@ -203,7 +198,6 @@ ACORDES_3: [acordes traduzidos para português, separados por ,]`
       indicesFinais.push(idxValido)
       }
     }
-
     // completa com outros se o gemini repetiu algum
     for (let i = 0; indicesFinais.length < 3 && i < pool.length; i++) {
       if (!indicesUsados.has(i)) {

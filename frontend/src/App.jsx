@@ -58,7 +58,6 @@ function PerfumeCard({ perfume, index }) {
     </div>
   );
 }
-
 function ModalLogin({ onAnonimo }) {
   async function handleGoogle() {
     // redireciona pro Google oauth pelo Supabase
@@ -122,7 +121,6 @@ export default function App() {
   const [sidebarAberta, setSidebarAberta] = useState(false);
   const [conversando, setConversando] = useState(false);
   const bottomRef = useRef(null);
-
   useEffect(() => {
     // checa se ja tem sessão salva no navegador
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -143,11 +141,10 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // scroll automático quando chega nova mensagem
+  // scroll automatico quando chega nova mensagem
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensagens, loading]);
-
   async function carregarSessoes(userId) {
     const { data } = await supabase
       .from("sessoes")
@@ -177,7 +174,7 @@ export default function App() {
   }
 
   async function criarSessao(userId) {
-    // conta quantas sessões ja existem pra numerar corretamente
+    // conta quantas sessões existem pra numerar certinho
     const { count } = await supabase
       .from("sessoes")
       .select("*", { count: "exact", head: true })
@@ -199,7 +196,6 @@ export default function App() {
       .update({ updated_at: new Date().toISOString() })
       .eq("id", sessaoId);
   }
-
   async function apagarSessao(sessaoId, index) {
     // apaga primeiro o historico depois a sessão
     await supabase.from("historico").delete().eq("sessao_id", sessaoId);
@@ -229,7 +225,6 @@ export default function App() {
     }
     buscar();
   }
-
   function handleAnonimo() {
     setAnonimo(true);
     setMostrarModal(false);
@@ -330,7 +325,6 @@ export default function App() {
     setSessaoAtiva(null);
     setConversando(false);
   }
-
   function novaConversa() {
     setSessaoAtiva(null);
     setMensagens([]);
@@ -359,7 +353,6 @@ export default function App() {
       }}
     >
       {mostrarModal && <ModalLogin onAnonimo={handleAnonimo} />}
-
       {user && (
         <aside className={`sidebar ${sidebarAberta ? "aberta" : ""}`}>
           <div className="sidebar-nome">{nomeExibido}</div>
@@ -461,7 +454,6 @@ export default function App() {
                   </div>
                 ),
               )}
-
               {loading && (
                 <div className="chat-row chat-ia">
                   <div className="chat-avatar">✦</div>

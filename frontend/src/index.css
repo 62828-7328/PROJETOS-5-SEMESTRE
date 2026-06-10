@@ -1,11 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=DM+Sans:wght@300;400;500&display=swap');
-
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
-
 :root {
   --bg: #f0ede8;
   --bg2: #e8e4de;
@@ -22,20 +20,20 @@
   --radius: 12px;
   --sidebar: 180px;
 }
-
 html, body, #root {
+  
   min-height: 100vh;
   width: 100%;
 }
 
 body {
+ 
   font-family: 'DM Sans', sans-serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-
 h1, h2, h3 {
   font-family: 'Cormorant Garamond', serif;
   font-weight: 400;
@@ -43,7 +41,7 @@ h1, h2, h3 {
 }
 
 button {
-  cursor: pointer;
+ cursor: pointer;
   font-family: 'DM Sans', sans-serif;
 }
 
@@ -63,7 +61,6 @@ a {
 ::-webkit-scrollbar-track {
   background: var(--bg);
 }
-
 ::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 3px;
