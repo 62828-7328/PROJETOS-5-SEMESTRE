@@ -5,6 +5,7 @@
   padding: 0;
 }
 :root {
+  
   --bg: #f0ede8;
   --bg2: #e8e4de;
   --surface: #faf8f5;
@@ -65,7 +66,6 @@ a {
   background: var(--border);
   border-radius: 3px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent-light);
 }

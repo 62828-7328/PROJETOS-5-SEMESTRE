@@ -2,14 +2,13 @@ import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import csv from 'csv-parser'
 import dotenv from 'dotenv'
-
 dotenv.config()
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-
 async function atualizarPaises() {
 
   const perfumes = []
+
   fs.createReadStream('fra_cleaned.csv')
     .pipe(csv({ separator: ';' }))
     .on('data', (row) => {
@@ -21,13 +20,12 @@ async function atualizarPaises() {
       perfumes.push(cleaned)
     })
     .on('end', async () => {
-      console.log(`📦 CSV carregado: ${perfumes.length} perfumes totais.`)
+      console.log(` CSV carregado: ${perfumes.length} perfumes totais.`)
 
       let atualizados = 0
       let erros = 0
 
       for (let i = 0; i < perfumes.length; i++) {
-
         const p = perfumes[i]
         const { error } = await supabase
           .from('perfumes')
@@ -41,7 +39,6 @@ async function atualizarPaises() {
         if (i % 500 === 0) console.log(`✅ [${i}/${perfumes.length}] ${p.Perfume}`)
         }
       }
-
     console.log(`\n🏁 Concluído! ${atualizados} atualizados, ${erros} erros.`)
     }) }
 atualizarPaises()
